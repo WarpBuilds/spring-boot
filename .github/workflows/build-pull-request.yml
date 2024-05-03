@@ -1,19 +1,16 @@
 name: Build Pull Request
-on: 
-  workflow_dispatch:
-    inputs:
-      runs-on-value:
-        required: true
-        type: string
-        description: runner scale set name
+on: push
 
 permissions:
   contents: read
 
 jobs:
   build:
+    strategy:
+      matrix:
+        runner_type: ["warpdev-ubuntu-latest-2x","warpdev-ubuntu-latest-4x"]
     name: Build pull request
-    runs-on: ${{inputs.runs-on-value}}
+    runs-on: ${{ matrix.runner_type }}
     # if: ${{ github.repository == 'spring-projects/spring-boot' }}
     steps:
       - name: Set up JDK 17
