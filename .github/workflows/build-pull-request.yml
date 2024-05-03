@@ -8,7 +8,7 @@ jobs:
   build:
     strategy:
       matrix:
-        runner_type: ["warpdev-ubuntu-latest-2x","warpdev-ubuntu-latest-4x"]
+        runner_type: ["warpdev-ubuntu-latest-x64-2x","warpdev-ubuntu-latest-x64-4x"]
     name: Build pull request
     runs-on: ${{ matrix.runner_type }}
     # if: ${{ github.repository == 'spring-projects/spring-boot' }}
