@@ -1,5 +1,11 @@
 name: Build Pull Request
-on: pull_request
+on: 
+  workflow_dispatch:
+    inputs:
+      runs-on-value:
+        required: true
+        type: string
+        description: runner scale set name
 
 permissions:
   contents: read
@@ -7,7 +13,7 @@ permissions:
 jobs:
   build:
     name: Build pull request
-    runs-on: self-hosted
+    runs-on: ${{inputs.runs-on-value}}
     # if: ${{ github.repository == 'spring-projects/spring-boot' }}
     steps:
       - name: Set up JDK 17
