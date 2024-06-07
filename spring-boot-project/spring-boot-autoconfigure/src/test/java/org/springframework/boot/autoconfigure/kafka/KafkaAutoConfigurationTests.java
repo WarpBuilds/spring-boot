@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -396,20 +396,6 @@ class KafkaAutoConfigurationTests {
 			});
 	}
 
-	@SuppressWarnings("deprecation")
-	@Deprecated(since = "3.1.0", forRemoval = true)
-	void streamsCacheMaxSizeBuffering() {
-		this.contextRunner.withUserConfiguration(EnableKafkaStreamsConfiguration.class)
-			.withPropertyValues("spring.kafka.streams.cache-max-size-buffering=1KB")
-			.run((context) -> {
-				Properties configs = context
-					.getBean(KafkaStreamsDefaultConfiguration.DEFAULT_STREAMS_CONFIG_BEAN_NAME,
-							KafkaStreamsConfiguration.class)
-					.asProperties();
-				assertThat(configs).containsEntry(StreamsConfig.CACHE_MAX_BYTES_BUFFERING_CONFIG, 1024);
-			});
-	}
-
 	@SuppressWarnings("unchecked")
 	@Test
 	void streamsApplicationIdUsesMainApplicationNameByDefault() {
@@ -757,7 +743,7 @@ class KafkaAutoConfigurationTests {
 			assertThat(context).hasSingleBean(KafkaAwareTransactionManager.class);
 			ConcurrentKafkaListenerContainerFactory<?, ?> factory = context
 				.getBean(ConcurrentKafkaListenerContainerFactory.class);
-			assertThat(factory.getContainerProperties().getTransactionManager())
+			assertThat(factory.getContainerProperties().getKafkaAwareTransactionManager())
 				.isSameAs(context.getBean(KafkaAwareTransactionManager.class));
 		});
 	}
@@ -772,7 +758,7 @@ class KafkaAutoConfigurationTests {
 			.run((context) -> {
 				ConcurrentKafkaListenerContainerFactory<?, ?> factory = context
 					.getBean(ConcurrentKafkaListenerContainerFactory.class);
-				assertThat(factory.getContainerProperties().getTransactionManager())
+				assertThat(factory.getContainerProperties().getKafkaAwareTransactionManager())
 					.isSameAs(context.getBean("customTransactionManager"));
 			});
 	}

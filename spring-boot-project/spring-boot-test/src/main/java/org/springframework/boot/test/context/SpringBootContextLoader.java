@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -167,6 +167,7 @@ public class SpringBootContextLoader extends AbstractContextLoader implements Ao
 				mainMethod = ReflectionUtils.findMethod(kotlinClass, "main", String[].class);
 			}
 			catch (ClassNotFoundException ex) {
+				// Ignore
 			}
 		}
 		Assert.state(mainMethod != null || useMainMethod == UseMainMethod.WHEN_AVAILABLE,
@@ -380,7 +381,7 @@ public class SpringBootContextLoader extends AbstractContextLoader implements Ao
 	/**
 	 * Inner class to configure {@link WebMergedContextConfiguration}.
 	 */
-	private static class WebConfigurer {
+	private static final class WebConfigurer {
 
 		void configure(MergedContextConfiguration mergedConfig, List<ApplicationContextInitializer<?>> initializers) {
 			WebMergedContextConfiguration webMergedConfig = (WebMergedContextConfiguration) mergedConfig;
@@ -555,6 +556,7 @@ public class SpringBootContextLoader extends AbstractContextLoader implements Ao
 				}
 			}
 			catch (AbandonedRunException ex) {
+				// Ignore
 			}
 			catch (Exception ex) {
 				if (this.failedContexts.size() == 1) {

@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -39,6 +39,7 @@ import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import org.apache.catalina.Context;
 import org.apache.catalina.Engine;
+import org.apache.catalina.Executor;
 import org.apache.catalina.Host;
 import org.apache.catalina.Lifecycle;
 import org.apache.catalina.LifecycleEvent;
@@ -106,6 +107,7 @@ import org.springframework.util.StringUtils;
  * @author Christoffer Sawicki
  * @author Dawid Antecki
  * @author Moritz Halbritter
+ * @author Scott Frederick
  * @since 2.0.0
  * @see #setPort(int)
  * @see #setContextLifecycleListeners(Collection)
@@ -209,13 +211,21 @@ public class TomcatServletWebServerFactory extends AbstractServletWebServerFacto
 		tomcat.getService().addConnector(connector);
 		customizeConnector(connector);
 		tomcat.setConnector(connector);
+		registerConnectorExecutor(tomcat, connector);
 		tomcat.getHost().setAutoDeploy(false);
 		configureEngine(tomcat.getEngine());
 		for (Connector additionalConnector : this.additionalTomcatConnectors) {
 			tomcat.getService().addConnector(additionalConnector);
+			registerConnectorExecutor(tomcat, additionalConnector);
 		}
 		prepareContext(tomcat.getHost(), initializers);
 		return getTomcatWebServer(tomcat);
+	}
+
+	private void registerConnectorExecutor(Tomcat tomcat, Connector connector) {
+		if (connector.getProtocolHandler().getExecutor() instanceof Executor executor) {
+			tomcat.getService().addExecutor(executor);
+		}
 	}
 
 	private void configureEngine(Engine engine) {
@@ -335,8 +345,8 @@ public class TomcatServletWebServerFactory extends AbstractServletWebServerFacto
 		if (StringUtils.hasText(getServerHeader())) {
 			connector.setProperty("server", getServerHeader());
 		}
-		if (connector.getProtocolHandler() instanceof AbstractProtocol) {
-			customizeProtocol((AbstractProtocol<?>) connector.getProtocolHandler());
+		if (connector.getProtocolHandler() instanceof AbstractProtocol<?> abstractProtocol) {
+			customizeProtocol(abstractProtocol);
 		}
 		invokeProtocolHandlerCustomizers(connector.getProtocolHandler());
 		if (getUriEncoding() != null) {
@@ -370,10 +380,17 @@ public class TomcatServletWebServerFactory extends AbstractServletWebServerFacto
 
 	private void customizeSsl(Connector connector) {
 		SslConnectorCustomizer customizer = new SslConnectorCustomizer(logger, connector, getSsl().getClientAuth());
-		customizer.customize(getSslBundle());
-		String sslBundleName = getSsl().getBundle();
+		customizer.customize(getSslBundle(), getServerNameSslBundles());
+		addBundleUpdateHandler(null, getSsl().getBundle(), customizer);
+		getSsl().getServerNameBundles()
+			.forEach((serverNameSslBundle) -> addBundleUpdateHandler(serverNameSslBundle.serverName(),
+					serverNameSslBundle.bundle(), customizer));
+	}
+
+	private void addBundleUpdateHandler(String serverName, String sslBundleName, SslConnectorCustomizer customizer) {
 		if (StringUtils.hasText(sslBundleName)) {
-			getSslBundles().addBundleUpdateHandler(sslBundleName, customizer::update);
+			getSslBundles().addBundleUpdateHandler(sslBundleName,
+					(sslBundle) -> customizer.update(serverName, sslBundle));
 		}
 	}
 
@@ -768,7 +785,7 @@ public class TomcatServletWebServerFactory extends AbstractServletWebServerFacto
 	 * {@link LifecycleListener} is used so not to interfere with Tomcat's default manager
 	 * creation logic.
 	 */
-	private static class DisablePersistSessionListener implements LifecycleListener {
+	private static final class DisablePersistSessionListener implements LifecycleListener {
 
 		@Override
 		public void lifecycleEvent(LifecycleEvent event) {

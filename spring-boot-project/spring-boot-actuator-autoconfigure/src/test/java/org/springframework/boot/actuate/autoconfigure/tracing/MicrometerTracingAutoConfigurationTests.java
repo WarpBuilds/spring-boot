@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,8 @@ package org.springframework.boot.actuate.autoconfigure.tracing;
 
 import java.util.List;
 
+import io.micrometer.common.annotation.ValueExpressionResolver;
+import io.micrometer.common.annotation.ValueResolver;
 import io.micrometer.tracing.Tracer;
 import io.micrometer.tracing.annotation.DefaultNewSpanParser;
 import io.micrometer.tracing.annotation.ImperativeMethodInvocationProcessor;
@@ -47,10 +49,12 @@ import static org.mockito.Mockito.mock;
  *
  * @author Moritz Halbritter
  * @author Jonatan Ivanov
+ * @author Brian Clozel
  */
 class MicrometerTracingAutoConfigurationTests {
 
 	private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
+		.withPropertyValues("management.observations.annotations.enabled=true")
 		.withConfiguration(AutoConfigurations.of(MicrometerTracingAutoConfiguration.class));
 
 	@Test
@@ -63,6 +67,7 @@ class MicrometerTracingAutoConfigurationTests {
 				assertThat(context).hasSingleBean(DefaultNewSpanParser.class);
 				assertThat(context).hasSingleBean(ImperativeMethodInvocationProcessor.class);
 				assertThat(context).hasSingleBean(SpanAspect.class);
+				assertThat(context).hasSingleBean(SpanTagAnnotationHandler.class);
 			});
 	}
 
@@ -100,6 +105,8 @@ class MicrometerTracingAutoConfigurationTests {
 				assertThat(context).hasSingleBean(ImperativeMethodInvocationProcessor.class);
 				assertThat(context).hasBean("customSpanAspect");
 				assertThat(context).hasSingleBean(SpanAspect.class);
+				assertThat(context).hasBean("customSpanTagAnnotationHandler");
+				assertThat(context).hasSingleBean(SpanTagAnnotationHandler.class);
 			});
 	}
 
@@ -125,6 +132,29 @@ class MicrometerTracingAutoConfigurationTests {
 			assertThat(context).doesNotHaveBean(ImperativeMethodInvocationProcessor.class);
 			assertThat(context).doesNotHaveBean(SpanAspect.class);
 		});
+	}
+
+	@Test
+	void shouldNotSupplyAspectBeansIfPropertyIsDisabled() {
+		this.contextRunner.withUserConfiguration(TracerConfiguration.class, PropagatorConfiguration.class)
+			.withPropertyValues("management.observations.annotations.enabled=false")
+			.run((context) -> {
+				assertThat(context).doesNotHaveBean(DefaultNewSpanParser.class);
+				assertThat(context).doesNotHaveBean(ImperativeMethodInvocationProcessor.class);
+				assertThat(context).doesNotHaveBean(SpanAspect.class);
+			});
+	}
+
+	@Test
+	void shouldSupplyAspectBeansIfLegacyPropertyIsEnabled() {
+		new ApplicationContextRunner().withPropertyValues("micrometer.observations.annotations.enabled=true")
+			.withConfiguration(AutoConfigurations.of(MicrometerTracingAutoConfiguration.class))
+			.withUserConfiguration(TracerConfiguration.class, PropagatorConfiguration.class)
+			.run((context) -> {
+				assertThat(context).hasSingleBean(DefaultNewSpanParser.class);
+				assertThat(context).hasSingleBean(ImperativeMethodInvocationProcessor.class);
+				assertThat(context).hasSingleBean(SpanAspect.class);
+			});
 	}
 
 	@Test
@@ -162,7 +192,7 @@ class MicrometerTracingAutoConfigurationTests {
 	}
 
 	@Configuration(proxyBeanMethods = false)
-	private static class TracerConfiguration {
+	private static final class TracerConfiguration {
 
 		@Bean
 		Tracer tracer() {
@@ -172,7 +202,7 @@ class MicrometerTracingAutoConfigurationTests {
 	}
 
 	@Configuration(proxyBeanMethods = false)
-	private static class PropagatorConfiguration {
+	private static final class PropagatorConfiguration {
 
 		@Bean
 		Propagator propagator() {
@@ -182,7 +212,7 @@ class MicrometerTracingAutoConfigurationTests {
 	}
 
 	@Configuration(proxyBeanMethods = false)
-	private static class CustomConfiguration {
+	private static final class CustomConfiguration {
 
 		@Bean
 		DefaultTracingObservationHandler customDefaultTracingObservationHandler() {
@@ -215,14 +245,20 @@ class MicrometerTracingAutoConfigurationTests {
 			return new SpanAspect(methodInvocationProcessor);
 		}
 
+		@Bean
+		SpanTagAnnotationHandler customSpanTagAnnotationHandler() {
+			return new SpanTagAnnotationHandler((aClass) -> mock(ValueResolver.class),
+					(aClass) -> mock(ValueExpressionResolver.class));
+		}
+
 	}
 
 	@Configuration(proxyBeanMethods = false)
-	private static class SpanTagAnnotationHandlerConfiguration {
+	private static final class SpanTagAnnotationHandlerConfiguration {
 
 		@Bean
 		SpanTagAnnotationHandler spanTagAnnotationHandler() {
-			return new SpanTagAnnotationHandler((aClass) -> null, (aClass) -> null);
+			return new SpanTagAnnotationHandler((valueResolverClass) -> null, (valueExpressionResolverClass) -> null);
 		}
 
 	}

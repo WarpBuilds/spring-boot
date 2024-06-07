@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,6 @@
 
 package org.springframework.boot.actuate.autoconfigure.tracing;
 
-import java.util.Collections;
 import java.util.List;
 
 import io.micrometer.tracing.otel.bridge.OtelBaggageManager;
@@ -73,8 +72,9 @@ class OpenTelemetryPropagationConfigurations {
 		@ConditionalOnEnabledTracing
 		TextMapPropagator textMapPropagatorWithBaggage(OtelCurrentTraceContext otelCurrentTraceContext) {
 			List<String> remoteFields = this.tracingProperties.getBaggage().getRemoteFields();
+			List<String> tagFields = this.tracingProperties.getBaggage().getTagFields();
 			BaggageTextMapPropagator baggagePropagator = new BaggageTextMapPropagator(remoteFields,
-					new OtelBaggageManager(otelCurrentTraceContext, remoteFields, Collections.emptyList()));
+					new OtelBaggageManager(otelCurrentTraceContext, remoteFields, tagFields));
 			return CompositeTextMapPropagator.create(this.tracingProperties.getPropagation(), baggagePropagator);
 		}
 

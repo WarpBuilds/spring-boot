@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -50,6 +50,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import org.springframework.core.annotation.Order;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
@@ -334,6 +335,46 @@ class ObservationAutoConfigurationTests {
 		});
 	}
 
+	@Test
+	void shouldEnableLongTaskTimersByDefault() {
+		this.contextRunner.run((context) -> {
+			DefaultMeterObservationHandler handler = context.getBean(DefaultMeterObservationHandler.class);
+			assertThat(handler).hasFieldOrPropertyWithValue("shouldCreateLongTaskTimer", true);
+		});
+	}
+
+	@Test
+	void shouldDisableLongTaskTimerIfPropertyIsSet() {
+		this.contextRunner.withPropertyValues("management.observations.long-task-timer.enabled=false")
+			.run((context) -> {
+				DefaultMeterObservationHandler handler = context.getBean(DefaultMeterObservationHandler.class);
+				assertThat(handler).hasFieldOrPropertyWithValue("shouldCreateLongTaskTimer", false);
+			});
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void shouldEnableLongTaskTimersForTracingByDefault() {
+		this.tracingContextRunner.run((context) -> {
+			TracingAwareMeterObservationHandler<Observation.Context> tracingHandler = context
+				.getBean(TracingAwareMeterObservationHandler.class);
+			Object delegate = ReflectionTestUtils.getField(tracingHandler, "delegate");
+			assertThat(delegate).hasFieldOrPropertyWithValue("shouldCreateLongTaskTimer", true);
+		});
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void shouldDisableLongTaskTimerForTracingIfPropertyIsSet() {
+		this.tracingContextRunner.withPropertyValues("management.observations.long-task-timer.enabled=false")
+			.run((context) -> {
+				TracingAwareMeterObservationHandler<Observation.Context> tracingHandler = context
+					.getBean(TracingAwareMeterObservationHandler.class);
+				Object delegate = ReflectionTestUtils.getField(tracingHandler, "delegate");
+				assertThat(delegate).hasFieldOrPropertyWithValue("shouldCreateLongTaskTimer", false);
+			});
+	}
+
 	@Configuration(proxyBeanMethods = false)
 	static class ObservationPredicates {
 
@@ -561,11 +602,11 @@ class ObservationAutoConfigurationTests {
 
 	}
 
-	private static class CustomContext extends Context {
+	private static final class CustomContext extends Context {
 
 	}
 
-	private static class CalledHandlers {
+	private static final class CalledHandlers {
 
 		private final List<ObservationHandler<?>> calledHandlers = new ArrayList<>();
 

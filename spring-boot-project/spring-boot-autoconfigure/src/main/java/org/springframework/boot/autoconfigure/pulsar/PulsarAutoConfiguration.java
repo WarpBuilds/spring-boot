@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -57,6 +57,8 @@ import org.springframework.pulsar.core.SchemaResolver;
 import org.springframework.pulsar.core.TopicResolver;
 import org.springframework.pulsar.listener.PulsarContainerProperties;
 import org.springframework.pulsar.reader.PulsarReaderContainerProperties;
+import org.springframework.pulsar.transaction.PulsarAwareTransactionManager;
+import org.springframework.pulsar.transaction.PulsarTransactionManager;
 
 /**
  * {@link EnableAutoConfiguration Auto-configuration} for Apache Pulsar.
@@ -65,6 +67,7 @@ import org.springframework.pulsar.reader.PulsarReaderContainerProperties;
  * @author Soby Chacko
  * @author Alexander Preuß
  * @author Phillip Webb
+ * @author Jonas Geiregat
  * @since 3.2.0
  */
 @AutoConfiguration
@@ -72,9 +75,9 @@ import org.springframework.pulsar.reader.PulsarReaderContainerProperties;
 @Import(PulsarConfiguration.class)
 public class PulsarAutoConfiguration {
 
-	private PulsarProperties properties;
+	private final PulsarProperties properties;
 
-	private PulsarPropertiesMapper propertiesMapper;
+	private final PulsarPropertiesMapper propertiesMapper;
 
 	PulsarAutoConfiguration(PulsarProperties properties) {
 		this.properties = properties;
@@ -125,13 +128,16 @@ public class PulsarAutoConfiguration {
 	PulsarTemplate<?> pulsarTemplate(PulsarProducerFactory<?> pulsarProducerFactory,
 			ObjectProvider<ProducerInterceptor> producerInterceptors, SchemaResolver schemaResolver,
 			TopicResolver topicResolver) {
-		return new PulsarTemplate<>(pulsarProducerFactory, producerInterceptors.orderedStream().toList(),
-				schemaResolver, topicResolver, this.properties.getTemplate().isObservationsEnabled());
+		PulsarTemplate<?> template = new PulsarTemplate<>(pulsarProducerFactory,
+				producerInterceptors.orderedStream().toList(), schemaResolver, topicResolver,
+				this.properties.getTemplate().isObservationsEnabled());
+		this.propertiesMapper.customizeTemplate(template);
+		return template;
 	}
 
 	@Bean
 	@ConditionalOnMissingBean(PulsarConsumerFactory.class)
-	DefaultPulsarConsumerFactory<Object> pulsarConsumerFactory(PulsarClient pulsarClient,
+	DefaultPulsarConsumerFactory<?> pulsarConsumerFactory(PulsarClient pulsarClient,
 			ObjectProvider<ConsumerBuilderCustomizer<?>> customizersProvider) {
 		List<ConsumerBuilderCustomizer<?>> customizers = new ArrayList<>();
 		customizers.add(this.propertiesMapper::customizeConsumerBuilder);
@@ -139,6 +145,13 @@ public class PulsarAutoConfiguration {
 		List<ConsumerBuilderCustomizer<Object>> lambdaSafeCustomizers = List
 			.of((builder) -> applyConsumerBuilderCustomizers(customizers, builder));
 		return new DefaultPulsarConsumerFactory<>(pulsarClient, lambdaSafeCustomizers);
+	}
+
+	@Bean
+	@ConditionalOnMissingBean(PulsarAwareTransactionManager.class)
+	@ConditionalOnProperty(prefix = "spring.pulsar.transaction", name = "enabled")
+	public PulsarTransactionManager pulsarTransactionManager(PulsarClient pulsarClient) {
+		return new PulsarTransactionManager(pulsarClient);
 	}
 
 	@SuppressWarnings("unchecked")
@@ -150,15 +163,17 @@ public class PulsarAutoConfiguration {
 
 	@Bean
 	@ConditionalOnMissingBean(name = "pulsarListenerContainerFactory")
-	ConcurrentPulsarListenerContainerFactory<Object> pulsarListenerContainerFactory(
+	ConcurrentPulsarListenerContainerFactory<?> pulsarListenerContainerFactory(
 			PulsarConsumerFactory<Object> pulsarConsumerFactory, SchemaResolver schemaResolver,
-			TopicResolver topicResolver, Environment environment) {
+			TopicResolver topicResolver, ObjectProvider<PulsarAwareTransactionManager> pulsarTransactionManager,
+			Environment environment) {
 		PulsarContainerProperties containerProperties = new PulsarContainerProperties();
 		containerProperties.setSchemaResolver(schemaResolver);
 		containerProperties.setTopicResolver(topicResolver);
 		if (Threading.VIRTUAL.isActive(environment)) {
-			containerProperties.setConsumerTaskExecutor(new VirtualThreadTaskExecutor());
+			containerProperties.setConsumerTaskExecutor(new VirtualThreadTaskExecutor("pulsar-consumer-"));
 		}
+		pulsarTransactionManager.ifUnique(containerProperties.transactions()::setTransactionManager);
 		this.propertiesMapper.customizeContainerProperties(containerProperties);
 		return new ConcurrentPulsarListenerContainerFactory<>(pulsarConsumerFactory, containerProperties);
 	}
@@ -188,7 +203,7 @@ public class PulsarAutoConfiguration {
 		PulsarReaderContainerProperties readerContainerProperties = new PulsarReaderContainerProperties();
 		readerContainerProperties.setSchemaResolver(schemaResolver);
 		if (Threading.VIRTUAL.isActive(environment)) {
-			readerContainerProperties.setReaderTaskExecutor(new VirtualThreadTaskExecutor());
+			readerContainerProperties.setReaderTaskExecutor(new VirtualThreadTaskExecutor("pulsar-reader-"));
 		}
 		this.propertiesMapper.customizeReaderContainerProperties(readerContainerProperties);
 		return new DefaultPulsarReaderContainerFactory<>(pulsarReaderFactory, readerContainerProperties);

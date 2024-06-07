@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -80,6 +80,7 @@ import org.springframework.context.event.ContextRefreshedEvent;
 import org.springframework.context.support.AbstractApplicationContext;
 import org.springframework.context.support.GenericApplicationContext;
 import org.springframework.core.GenericTypeResolver;
+import org.springframework.core.NativeDetector;
 import org.springframework.core.OrderComparator;
 import org.springframework.core.OrderComparator.OrderSourceProvider;
 import org.springframework.core.Ordered;
@@ -101,7 +102,6 @@ import org.springframework.util.Assert;
 import org.springframework.util.ClassUtils;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.ObjectUtils;
-import org.springframework.util.ReflectionUtils;
 import org.springframework.util.StringUtils;
 import org.springframework.util.function.ThrowingConsumer;
 import org.springframework.util.function.ThrowingSupplier;
@@ -179,6 +179,7 @@ import org.springframework.util.function.ThrowingSupplier;
  * @author Chris Bono
  * @author Moritz Halbritter
  * @author Tadaya Tsuyukubo
+ * @author Lasse Wulff
  * @author Yanming Zhou
  * @since 1.0.0
  * @see #run(Class, String[])
@@ -341,11 +342,7 @@ public class SpringApplication {
 			callRunners(context, applicationArguments);
 		}
 		catch (Throwable ex) {
-			if (ex instanceof AbandonedRunException) {
-				throw ex;
-			}
-			handleRunFailure(context, ex, listeners);
-			throw new IllegalStateException(ex);
+			throw handleRunFailure(context, ex, listeners);
 		}
 		try {
 			if (context.isRunning()) {
@@ -353,11 +350,7 @@ public class SpringApplication {
 			}
 		}
 		catch (Throwable ex) {
-			if (ex instanceof AbandonedRunException) {
-				throw ex;
-			}
-			handleRunFailure(context, ex, null);
-			throw new IllegalStateException(ex);
+			throw handleRunFailure(context, ex, null);
 		}
 		return context;
 	}
@@ -446,10 +439,9 @@ public class SpringApplication {
 					initializers.stream().filter(AotApplicationContextInitializer.class::isInstance).toList());
 			if (aotInitializers.isEmpty()) {
 				String initializerClassName = this.mainApplicationClass.getName() + "__ApplicationContextInitializer";
-				Assert.state(ClassUtils.isPresent(initializerClassName, getClassLoader()),
-						"You are starting the application with AOT mode enabled but AOT processing hasn't happened. "
-								+ "Please build your application with enabled AOT processing first, "
-								+ "or remove the system property 'spring.aot.enabled' to run the application in regular mode");
+				if (!ClassUtils.isPresent(initializerClassName, getClassLoader())) {
+					throw new AotInitializerNotFoundException(this.mainApplicationClass, initializerClassName);
+				}
 				aotInitializers.add(AotApplicationContextInitializer.forInitializerClasses(initializerClassName));
 			}
 			initializers.removeAll(aotInitializers);
@@ -806,8 +798,11 @@ public class SpringApplication {
 			.accept((R) runner);
 	}
 
-	private void handleRunFailure(ConfigurableApplicationContext context, Throwable exception,
+	private RuntimeException handleRunFailure(ConfigurableApplicationContext context, Throwable exception,
 			SpringApplicationRunListeners listeners) {
+		if (exception instanceof AbandonedRunException abandonedRunException) {
+			return abandonedRunException;
+		}
 		try {
 			try {
 				handleExitCode(context, exception);
@@ -826,7 +821,8 @@ public class SpringApplication {
 		catch (Exception ex) {
 			logger.warn("Unable to close ApplicationContext", ex);
 		}
-		ReflectionUtils.rethrowRuntimeException(exception);
+		return (exception instanceof RuntimeException runtimeException) ? runtimeException
+				: new IllegalStateException(exception);
 	}
 
 	private Collection<SpringBootExceptionReporter> getExceptionReporters(ConfigurableApplicationContext context) {
@@ -852,7 +848,16 @@ public class SpringApplication {
 			// Continue with normal handling of the original failure
 		}
 		if (logger.isErrorEnabled()) {
-			logger.error("Application run failed", failure);
+			if (NativeDetector.inNativeImage()) {
+				// Depending on how early the failure was, logging may not work in a
+				// native image so we output the stack trace directly to System.out
+				// instead.
+				System.out.println("Application run failed");
+				failure.printStackTrace(System.out);
+			}
+			else {
+				logger.error("Application run failed", failure);
+			}
 			registerLoggedException(failure);
 		}
 	}
@@ -1522,7 +1527,7 @@ public class SpringApplication {
 		 * {@link SpringApplicationRunListener} to capture {@link Running} application
 		 * details.
 		 */
-		private static class RunListener implements SpringApplicationRunListener, Running {
+		private static final class RunListener implements SpringApplicationRunListener, Running {
 
 			private final List<ConfigurableApplicationContext> contexts = Collections
 				.synchronizedList(new ArrayList<>());
@@ -1739,7 +1744,7 @@ public class SpringApplication {
 	/**
 	 * Standard {@link Startup} implementation.
 	 */
-	private static class StandardStartup extends Startup {
+	private static final class StandardStartup extends Startup {
 
 		private final Long startTime = System.currentTimeMillis();
 
@@ -1768,7 +1773,7 @@ public class SpringApplication {
 	/**
 	 * Coordinated-Restore-At-Checkpoint {@link Startup} implementation.
 	 */
-	private static class CoordinatedRestoreAtCheckpointStartup extends Startup {
+	private static final class CoordinatedRestoreAtCheckpointStartup extends Startup {
 
 		private final StandardStartup fallback = new StandardStartup();
 

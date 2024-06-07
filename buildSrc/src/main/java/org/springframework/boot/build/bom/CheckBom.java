@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 package org.springframework.boot.build.bom;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -35,6 +36,8 @@ import org.gradle.api.tasks.TaskAction;
 import org.springframework.boot.build.bom.Library.Group;
 import org.springframework.boot.build.bom.Library.Module;
 import org.springframework.boot.build.bom.Library.ProhibitedVersion;
+import org.springframework.boot.build.bom.Library.VersionAlignment;
+import org.springframework.boot.build.bom.ManagedDependencies.Difference;
 import org.springframework.boot.build.bom.bomr.version.DependencyVersion;
 
 /**
@@ -69,6 +72,8 @@ public class CheckBom extends DefaultTask {
 		List<String> libraryErrors = new ArrayList<>();
 		checkExclusions(library, libraryErrors);
 		checkProhibitedVersions(library, libraryErrors);
+		checkVersionAlignment(library, libraryErrors);
+		checkDependencyManagementAlignment(library, libraryErrors);
 		if (!libraryErrors.isEmpty()) {
 			errors.add(library.getName());
 			for (String libraryError : libraryErrors) {
@@ -146,6 +151,66 @@ public class CheckBom extends DefaultTask {
 				}
 			}
 		}
+	}
+
+	private void checkVersionAlignment(Library library, List<String> errors) {
+		VersionAlignment versionAlignment = library.getVersionAlignment();
+		if (versionAlignment == null) {
+			return;
+		}
+		Set<String> alignedVersions = versionAlignment.resolve();
+		if (alignedVersions.size() == 1) {
+			String alignedVersion = alignedVersions.iterator().next();
+			if (!alignedVersion.equals(library.getVersion().getVersion().toString())) {
+				errors.add("Version " + library.getVersion().getVersion() + " is misaligned. It should be "
+						+ alignedVersion + ".");
+			}
+		}
+		else {
+			if (alignedVersions.isEmpty()) {
+				errors.add("Version alignment requires a single version but none were found.");
+			}
+			else {
+				errors.add("Version alignment requires a single version but " + alignedVersions.size() + " were found: "
+						+ alignedVersions + ".");
+			}
+		}
+	}
+
+	private void checkDependencyManagementAlignment(Library library, List<String> errors) {
+		String alignsWithBom = library.getAlignsWithBom();
+		if (alignsWithBom == null) {
+			return;
+		}
+		File bom = resolveBom(library, alignsWithBom);
+		ManagedDependencies managedByBom = ManagedDependencies.ofBom(bom);
+		ManagedDependencies managedByLibrary = ManagedDependencies.ofLibrary(library);
+		Difference diff = managedByBom.diff(managedByLibrary);
+		if (!diff.isEmpty()) {
+			String error = "Dependency management does not align with " + library.getAlignsWithBom() + ":";
+			if (!diff.missing().isEmpty()) {
+				error = error + "%n        - Missing:%n            %s"
+					.formatted(String.join("\n            ", diff.missing()));
+			}
+			if (!diff.unexpected().isEmpty()) {
+				error = error + "%n        - Unexpected:%n            %s"
+					.formatted(String.join("\n            ", diff.unexpected()));
+			}
+			errors.add(error);
+		}
+	}
+
+	private File resolveBom(Library library, String alignsWithBom) {
+		String coordinates = alignsWithBom + ":" + library.getVersion().getVersion() + "@pom";
+		Set<File> files = getProject().getConfigurations()
+			.detachedConfiguration(getProject().getDependencies().create(coordinates))
+			.getResolvedConfiguration()
+			.getFiles();
+		if (files.size() != 1) {
+			throw new IllegalStateException(
+					"Expected a single file but '" + coordinates + "' resolved to " + files.size());
+		}
+		return files.iterator().next();
 	}
 
 }

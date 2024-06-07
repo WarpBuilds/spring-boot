@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -169,8 +169,9 @@ public abstract class UpgradeDependencies extends DefaultTask {
 		if (!availableLabels.containsAll(issueLabels)) {
 			List<String> unknownLabels = new ArrayList<>(issueLabels);
 			unknownLabels.removeAll(availableLabels);
+			String suffix = (unknownLabels.size() == 1) ? "" : "s";
 			throw new InvalidUserDataException(
-					"Unknown label(s): " + StringUtils.collectionToCommaDelimitedString(unknownLabels));
+					"Unknown label" + suffix + ": " + StringUtils.collectionToCommaDelimitedString(unknownLabels));
 		}
 		return issueLabels;
 	}
@@ -193,7 +194,7 @@ public abstract class UpgradeDependencies extends DefaultTask {
 		java.util.Optional<Milestone> matchingMilestone = milestones.stream()
 			.filter((milestone) -> milestone.getName().equals(getMilestone().get()))
 			.findFirst();
-		if (!matchingMilestone.isPresent()) {
+		if (matchingMilestone.isEmpty()) {
 			throw new InvalidUserDataException("Unknown milestone: " + getMilestone().get());
 		}
 		return matchingMilestone.get();
@@ -226,13 +227,13 @@ public abstract class UpgradeDependencies extends DefaultTask {
 
 	protected List<BiPredicate<Library, DependencyVersion>> determineUpdatePredicates(Milestone milestone) {
 		List<BiPredicate<Library, DependencyVersion>> updatePredicates = new ArrayList<>();
-		updatePredicates.add(this::compilesWithUpgradePolicy);
+		updatePredicates.add(this::compliesWithUpgradePolicy);
 		updatePredicates.add(this::isAnUpgrade);
 		updatePredicates.add(this::isNotProhibited);
 		return updatePredicates;
 	}
 
-	private boolean compilesWithUpgradePolicy(Library library, DependencyVersion candidate) {
+	private boolean compliesWithUpgradePolicy(Library library, DependencyVersion candidate) {
 		return this.bom.getUpgrade().getPolicy().test(candidate, library.getVersion().getVersion());
 	}
 
@@ -241,9 +242,9 @@ public abstract class UpgradeDependencies extends DefaultTask {
 	}
 
 	private boolean isNotProhibited(Library library, DependencyVersion candidate) {
-		return !library.getProhibitedVersions()
+		return library.getProhibitedVersions()
 			.stream()
-			.anyMatch((prohibited) -> prohibited.isProhibited(candidate.toString()));
+			.noneMatch((prohibited) -> prohibited.isProhibited(candidate.toString()));
 	}
 
 	private List<Library> matchingLibraries() {

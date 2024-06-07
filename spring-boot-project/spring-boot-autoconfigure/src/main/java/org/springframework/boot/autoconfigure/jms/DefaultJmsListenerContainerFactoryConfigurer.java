@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,6 +36,7 @@ import org.springframework.util.Assert;
  * @author Stephane Nicoll
  * @author Eddú Meléndez
  * @author Vedran Pavic
+ * @author Lasse Wulff
  * @since 1.3.3
  */
 public final class DefaultJmsListenerContainerFactoryConfigurer {
@@ -114,11 +115,13 @@ public final class DefaultJmsListenerContainerFactoryConfigurer {
 	public void configure(DefaultJmsListenerContainerFactory factory, ConnectionFactory connectionFactory) {
 		Assert.notNull(factory, "Factory must not be null");
 		Assert.notNull(connectionFactory, "ConnectionFactory must not be null");
-		factory.setConnectionFactory(connectionFactory);
-		factory.setPubSubDomain(this.jmsProperties.isPubSubDomain());
 		JmsProperties.Listener listenerProperties = this.jmsProperties.getListener();
 		Session sessionProperties = listenerProperties.getSession();
+		factory.setConnectionFactory(connectionFactory);
 		PropertyMapper map = PropertyMapper.get().alwaysApplyingWhenNonNull();
+		map.from(this.jmsProperties::isPubSubDomain).to(factory::setPubSubDomain);
+		map.from(this.jmsProperties::isSubscriptionDurable).to(factory::setSubscriptionDurable);
+		map.from(this.jmsProperties::getClientId).to(factory::setClientId);
 		map.from(this.transactionManager).to(factory::setTransactionManager);
 		map.from(this.destinationResolver).to(factory::setDestinationResolver);
 		map.from(this.messageConverter).to(factory::setMessageConverter);

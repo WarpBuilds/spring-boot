@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -311,7 +311,7 @@ class Lifecycle implements Closeable {
 			deleteVolume(cache.getVolume().getVolumeName());
 		}
 		if (cache.getBind() != null) {
-			deleteBind(cache.getBind().getSource());
+			deleteBind(cache.getBind());
 		}
 	}
 
@@ -319,19 +319,19 @@ class Lifecycle implements Closeable {
 		this.docker.volume().delete(name, true);
 	}
 
-	private void deleteBind(String source) {
+	private void deleteBind(Cache.Bind bind) {
 		try {
-			FileSystemUtils.deleteRecursively(Path.of(source));
+			FileSystemUtils.deleteRecursively(Path.of(bind.getSource()));
 		}
-		catch (IOException ex) {
-			throw new IllegalStateException("Error cleaning bind mount directory '" + source + "'", ex);
+		catch (Exception ex) {
+			this.log.failedCleaningWorkDir(bind, ex);
 		}
 	}
 
 	/**
 	 * Common directories used by the various phases.
 	 */
-	private static class Directory {
+	private static final class Directory {
 
 		/**
 		 * The directory used by buildpacks to write their layer contributions. A new

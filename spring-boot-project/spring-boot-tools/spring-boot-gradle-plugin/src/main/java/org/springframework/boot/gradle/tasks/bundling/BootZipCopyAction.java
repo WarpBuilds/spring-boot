@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -96,7 +96,7 @@ class BootZipCopyAction implements CopyAction {
 
 	private final boolean includeDefaultLoader;
 
-	private final String layerToolsLocation;
+	private final String jarmodeToolsLocation;
 
 	private final Spec<FileTreeElement> requiresUnpack;
 
@@ -119,7 +119,7 @@ class BootZipCopyAction implements CopyAction {
 	private final LoaderImplementation loaderImplementation;
 
 	BootZipCopyAction(File output, Manifest manifest, boolean preserveFileTimestamps, Integer dirMode, Integer fileMode,
-			boolean includeDefaultLoader, String layerToolsLocation, Spec<FileTreeElement> requiresUnpack,
+			boolean includeDefaultLoader, String jarmodeToolsLocation, Spec<FileTreeElement> requiresUnpack,
 			Spec<FileTreeElement> exclusions, LaunchScriptConfiguration launchScript, Spec<FileCopyDetails> librarySpec,
 			Function<FileCopyDetails, ZipCompression> compressionResolver, String encoding,
 			ResolvedDependencies resolvedDependencies, boolean supportsSignatureFile, LayerResolver layerResolver,
@@ -130,7 +130,7 @@ class BootZipCopyAction implements CopyAction {
 		this.dirMode = dirMode;
 		this.fileMode = fileMode;
 		this.includeDefaultLoader = includeDefaultLoader;
-		this.layerToolsLocation = layerToolsLocation;
+		this.jarmodeToolsLocation = jarmodeToolsLocation;
 		this.requiresUnpack = requiresUnpack;
 		this.exclusions = exclusions;
 		this.launchScript = launchScript;
@@ -204,6 +204,7 @@ class BootZipCopyAction implements CopyAction {
 			outputStream.close();
 		}
 		catch (IOException ex) {
+			// Ignore
 		}
 	}
 
@@ -341,8 +342,8 @@ class BootZipCopyAction implements CopyAction {
 		}
 
 		private void writeJarToolsIfNecessary() throws IOException {
-			if (BootZipCopyAction.this.layerToolsLocation != null) {
-				writeJarModeLibrary(BootZipCopyAction.this.layerToolsLocation, JarModeLibrary.LAYER_TOOLS);
+			if (BootZipCopyAction.this.jarmodeToolsLocation != null) {
+				writeJarModeLibrary(BootZipCopyAction.this.jarmodeToolsLocation, JarModeLibrary.TOOLS);
 			}
 		}
 

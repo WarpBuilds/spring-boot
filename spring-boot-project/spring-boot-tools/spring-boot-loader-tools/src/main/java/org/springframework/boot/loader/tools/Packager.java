@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -71,6 +71,10 @@ public abstract class Packager {
 	private static final String BOOT_CLASSPATH_INDEX_ATTRIBUTE = "Spring-Boot-Classpath-Index";
 
 	private static final String BOOT_LAYERS_INDEX_ATTRIBUTE = "Spring-Boot-Layers-Index";
+
+	private static final String SBOM_LOCATION_ATTRIBUTE = "Sbom-Location";
+
+	private static final String SBOM_FORMAT_ATTRIBUTE = "Sbom-Format";
 
 	private static final byte[] ZIP_FILE_HEADER = new byte[] { 'P', 'K', 3, 4 };
 
@@ -299,6 +303,7 @@ public abstract class Packager {
 		Manifest manifest = createInitialManifest(source);
 		addMainAndStartAttributes(source, manifest);
 		addBootAttributes(manifest.getMainAttributes());
+		addSbomAttributes(source, manifest.getMainAttributes());
 		return manifest;
 	}
 
@@ -408,6 +413,21 @@ public abstract class Packager {
 		}
 	}
 
+	private void addSbomAttributes(JarFile source, Attributes attributes) {
+		JarEntry sbomEntry = source.stream().filter(this::isCycloneDxBom).findAny().orElse(null);
+		if (sbomEntry != null) {
+			attributes.putValue(SBOM_LOCATION_ATTRIBUTE, sbomEntry.getName());
+			attributes.putValue(SBOM_FORMAT_ATTRIBUTE, "CycloneDX");
+		}
+	}
+
+	private boolean isCycloneDxBom(JarEntry entry) {
+		if (!entry.getName().startsWith("META-INF/sbom/")) {
+			return false;
+		}
+		return entry.getName().endsWith(".cdx.json") || entry.getName().endsWith("/bom.json");
+	}
+
 	private void putIfHasLength(Attributes attributes, String name, String value) {
 		if (StringUtils.hasLength(value)) {
 			attributes.putValue(name, value);
@@ -511,8 +531,8 @@ public abstract class Packager {
 					addLibrary(library);
 				}
 			});
-			if (isLayered() && Packager.this.includeRelevantJarModeJars) {
-				addLibrary(JarModeLibrary.LAYER_TOOLS);
+			if (Packager.this.includeRelevantJarModeJars) {
+				addLibrary(JarModeLibrary.TOOLS);
 			}
 			this.unpackHandler = new PackagedLibrariesUnpackHandler();
 			this.libraryLookup = this::lookup;
@@ -566,7 +586,7 @@ public abstract class Packager {
 		 * An {@link UnpackHandler} that determines that an entry needs to be unpacked if
 		 * a library that requires unpacking has a matching entry name.
 		 */
-		private class PackagedLibrariesUnpackHandler implements UnpackHandler {
+		private final class PackagedLibrariesUnpackHandler implements UnpackHandler {
 
 			@Override
 			public boolean requiresUnpack(String name) {

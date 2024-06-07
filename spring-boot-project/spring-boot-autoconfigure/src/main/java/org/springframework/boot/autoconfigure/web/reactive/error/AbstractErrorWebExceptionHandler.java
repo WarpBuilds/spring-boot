@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -54,6 +54,7 @@ import org.springframework.web.util.HtmlUtils;
  *
  * @author Brian Clozel
  * @author Scott Frederick
+ * @author Moritz Halbritter
  * @since 2.0.0
  * @see ErrorAttributes
  */
@@ -166,6 +167,17 @@ public abstract class AbstractErrorWebExceptionHandler implements ErrorWebExcept
 	 */
 	protected boolean isBindingErrorsEnabled(ServerRequest request) {
 		return getBooleanParameter(request, "errors");
+	}
+
+	/**
+	 * Check whether the path attribute has been set on the given request.
+	 * @param request the source request
+	 * @return {@code true} if the path attribute has been requested, {@code false}
+	 * otherwise
+	 * @since 3.3.0
+	 */
+	protected boolean isPathEnabled(ServerRequest request) {
+		return getBooleanParameter(request, "path");
 	}
 
 	private boolean getBooleanParameter(ServerRequest request, String parameterName) {
@@ -330,7 +342,7 @@ public abstract class AbstractErrorWebExceptionHandler implements ErrorWebExcept
 		return response.writeTo(exchange, new ResponseContext());
 	}
 
-	private class ResponseContext implements ServerResponse.Context {
+	private final class ResponseContext implements ServerResponse.Context {
 
 		@Override
 		public List<HttpMessageWriter<?>> messageWriters() {

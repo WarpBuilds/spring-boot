@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,11 +30,11 @@ import java.net.URL;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyStore;
-import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Date;
@@ -88,7 +88,6 @@ import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManager;
 import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManagerBuilder;
 import org.apache.hc.client5.http.protocol.HttpClientContext;
 import org.apache.hc.client5.http.ssl.SSLConnectionSocketFactory;
-import org.apache.hc.client5.http.ssl.TrustSelfSignedStrategy;
 import org.apache.hc.core5.http.HttpResponse;
 import org.apache.hc.core5.http.io.HttpClientResponseHandler;
 import org.apache.hc.core5.http.protocol.HttpContext;
@@ -135,14 +134,12 @@ import org.springframework.boot.web.server.PortInUseException;
 import org.springframework.boot.web.server.Shutdown;
 import org.springframework.boot.web.server.Ssl;
 import org.springframework.boot.web.server.Ssl.ClientAuth;
-import org.springframework.boot.web.server.SslStoreProvider;
 import org.springframework.boot.web.server.WebServer;
 import org.springframework.boot.web.server.WebServerException;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.boot.web.servlet.ServletContextInitializer;
 import org.springframework.boot.web.servlet.ServletRegistrationBean;
 import org.springframework.boot.web.servlet.server.Session.SessionTrackingMode;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpMethod;
@@ -162,9 +159,7 @@ import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException
 import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
 import static org.assertj.core.api.Assertions.fail;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
-import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -177,8 +172,8 @@ import static org.mockito.Mockito.times;
  * @author Andy Wilkinson
  * @author Raja Kolli
  * @author Scott Frederick
+ * @author Moritz Halbritter
  */
-@SuppressWarnings("removal")
 @ExtendWith(OutputCaptureExtension.class)
 @DirtiesUrlFactories
 public abstract class AbstractServletWebServerFactoryTests {
@@ -684,33 +679,6 @@ public abstract class AbstractServletWebServerFactoryTests {
 	}
 
 	@Test
-	@Deprecated(since = "3.1.0", forRemoval = true)
-	void sslWithCustomSslStoreProvider() throws Exception {
-		AbstractServletWebServerFactory factory = getFactory();
-		addTestTxtFile(factory);
-		Ssl ssl = new Ssl();
-		ssl.setClientAuth(ClientAuth.NEED);
-		ssl.setKeyPassword("password");
-		factory.setSsl(ssl);
-		SslStoreProvider sslStoreProvider = mock(SslStoreProvider.class);
-		given(sslStoreProvider.getKeyStore()).willReturn(loadStore());
-		given(sslStoreProvider.getTrustStore()).willReturn(loadStore());
-		factory.setSslStoreProvider(sslStoreProvider);
-		this.webServer = factory.getWebServer();
-		this.webServer.start();
-		KeyStore keyStore = KeyStore.getInstance(KeyStore.getDefaultType());
-		loadStore(keyStore, new FileSystemResource("src/test/resources/test.jks"));
-		SSLConnectionSocketFactory socketFactory = new SSLConnectionSocketFactory(
-				new SSLContextBuilder().loadTrustMaterial(null, new TrustSelfSignedStrategy())
-					.loadKeyMaterial(keyStore, "password".toCharArray())
-					.build());
-		HttpComponentsClientHttpRequestFactory requestFactory = createHttpComponentsRequestFactory(socketFactory);
-		assertThat(getResponse(getLocalUrl("https", "/test.txt"), requestFactory)).isEqualTo("test");
-		then(sslStoreProvider).should(atLeastOnce()).getKeyStore();
-		then(sslStoreProvider).should(atLeastOnce()).getTrustStore();
-	}
-
-	@Test
 	void disableJspServletRegistration() throws Exception {
 		AbstractServletWebServerFactory factory = getFactory();
 		factory.getJsp().setRegistered(false);
@@ -958,6 +926,23 @@ public abstract class AbstractServletWebServerFactoryTests {
 	}
 
 	@Test
+	void cookieSameSiteSuppliersShouldNotAffectSessionCookie() throws IOException, URISyntaxException {
+		AbstractServletWebServerFactory factory = getFactory();
+		factory.getSession().getCookie().setSameSite(SameSite.LAX);
+		factory.getSession().getCookie().setName("SESSIONCOOKIE");
+		factory.addCookieSameSiteSuppliers(CookieSameSiteSupplier.ofStrict());
+		factory.addInitializers(new ServletRegistrationBean<>(new CookieServlet(false), "/"));
+		this.webServer = factory.getWebServer();
+		this.webServer.start();
+		ClientHttpResponse clientResponse = getClientResponse(getLocalUrl("/"));
+		assertThat(clientResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+		List<String> setCookieHeaders = clientResponse.getHeaders().get("Set-Cookie");
+		assertThat(setCookieHeaders).satisfiesExactlyInAnyOrder(
+				(header) -> assertThat(header).contains("SESSIONCOOKIE").contains("SameSite=Lax"),
+				(header) -> assertThat(header).contains("test=test").contains("SameSite=Strict"));
+	}
+
+	@Test
 	protected void sslSessionTracking() {
 		AbstractServletWebServerFactory factory = getFactory();
 		Ssl ssl = new Ssl();
@@ -1023,6 +1008,23 @@ public abstract class AbstractServletWebServerFactoryTests {
 			.map((entry) -> new MimeMappings.Mapping(entry.getKey(), entry.getValue()))
 			.toList();
 		Collection<MimeMappings.Mapping> expectedMimeMappings = MimeMappings.DEFAULT.getAll();
+		assertThat(configuredMimeMappings).containsExactlyInAnyOrderElementsOf(expectedMimeMappings);
+	}
+
+	@Test
+	void additionalMimeMappingsCanBeConfigured() {
+		AbstractServletWebServerFactory factory = getFactory();
+		MimeMappings additionalMimeMappings = new MimeMappings();
+		additionalMimeMappings.add("a", "alpha");
+		additionalMimeMappings.add("b", "bravo");
+		factory.addMimeMappings(additionalMimeMappings);
+		this.webServer = factory.getWebServer();
+		Collection<MimeMappings.Mapping> configuredMimeMappings = getActualMimeMappings().entrySet()
+			.stream()
+			.map((entry) -> new MimeMappings.Mapping(entry.getKey(), entry.getValue()))
+			.toList();
+		List<MimeMappings.Mapping> expectedMimeMappings = new ArrayList<>(MimeMappings.DEFAULT.getAll());
+		expectedMimeMappings.addAll(additionalMimeMappings.getAll());
 		assertThat(configuredMimeMappings).containsExactlyInAnyOrderElementsOf(expectedMimeMappings);
 	}
 
@@ -1275,7 +1277,7 @@ public abstract class AbstractServletWebServerFactoryTests {
 			blockingServlet.admitOne();
 		}
 		catch (RuntimeException ex) {
-
+			// Ignore
 		}
 	}
 
@@ -1331,7 +1333,7 @@ public abstract class AbstractServletWebServerFactoryTests {
 			blockingServlet.admitOne();
 		}
 		catch (RuntimeException ex) {
-
+			// Ignore
 		}
 	}
 
@@ -1341,7 +1343,7 @@ public abstract class AbstractServletWebServerFactoryTests {
 		this.webServer = factory.getWebServer();
 		this.webServer.start();
 		assertThat(startedLogMessage()).matches("(Jetty|Tomcat|Undertow) started on port " + this.webServer.getPort()
-				+ " \\(http(/1.1)?\\)( with context path '(/)?')?");
+				+ " \\(http(/1.1)?\\) with context path '/'");
 	}
 
 	@Test
@@ -1361,7 +1363,7 @@ public abstract class AbstractServletWebServerFactoryTests {
 		this.webServer = factory.getWebServer();
 		this.webServer.start();
 		assertThat(startedLogMessage()).matches("(Jetty|Tomcat|Undertow) started on ports " + this.webServer.getPort()
-				+ " \\(http(/1.1)?\\), [0-9]+ \\(http(/1.1)?\\)( with context path '(/)?')?");
+				+ " \\(http(/1.1)?\\), [0-9]+ \\(http(/1.1)?\\) with context path '/'");
 	}
 
 	protected Future<Object> initiateGetRequest(int port, String path) {
@@ -1437,7 +1439,7 @@ public abstract class AbstractServletWebServerFactoryTests {
 			compression.setExcludedUserAgents(excludedUserAgents);
 		}
 		factory.setCompression(compression);
-		factory.addInitializers(new ServletRegistrationBean<HttpServlet>(new HttpServlet() {
+		factory.addInitializers(new ServletRegistrationBean<>(new HttpServlet() {
 
 			@Override
 			protected void service(HttpServletRequest req, HttpServletResponse resp) throws IOException {
@@ -1598,13 +1600,6 @@ public abstract class AbstractServletWebServerFactoryTests {
 		}
 	}
 
-	private KeyStore loadStore() throws KeyStoreException, IOException, NoSuchAlgorithmException, CertificateException {
-		KeyStore keyStore = KeyStore.getInstance("JKS");
-		Resource resource = new ClassPathResource("test.jks");
-		loadStore(keyStore, resource);
-		return keyStore;
-	}
-
 	private void loadStore(KeyStore keyStore, Resource resource)
 			throws IOException, NoSuchAlgorithmException, CertificateException {
 		try (InputStream stream = resource.getInputStream()) {
@@ -1614,7 +1609,7 @@ public abstract class AbstractServletWebServerFactoryTests {
 
 	protected abstract String startedLogMessage();
 
-	private class TestGzipInputStreamFactory implements InputStreamFactory {
+	private final class TestGzipInputStreamFactory implements InputStreamFactory {
 
 		private final AtomicBoolean requested = new AtomicBoolean();
 
@@ -1671,7 +1666,7 @@ public abstract class AbstractServletWebServerFactoryTests {
 		}
 
 		@Override
-		public boolean isTrusted(X509Certificate[] chain, String authType) throws CertificateException {
+		public boolean isTrusted(X509Certificate[] chain, String authType) {
 			String hexSerialNumber = chain[0].getSerialNumber().toString(16);
 			boolean isMatch = hexSerialNumber.equalsIgnoreCase(this.serialNumber);
 			return super.isTrusted(chain, authType) && isMatch;
@@ -1803,7 +1798,7 @@ public abstract class AbstractServletWebServerFactoryTests {
 		}
 
 		@Override
-		protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+		protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
 			req.getSession(true);
 			resp.addCookie(new Cookie("test", "test"));
 			if (this.addSupplierTestCookies) {
@@ -1811,6 +1806,18 @@ public abstract class AbstractServletWebServerFactoryTests {
 				resp.addCookie(new Cookie("empty", "test"));
 				resp.addCookie(new Cookie("controlled", "test"));
 			}
+		}
+
+	}
+
+	protected static class TrustSelfSignedStrategy implements TrustStrategy {
+
+		public TrustSelfSignedStrategy() {
+		}
+
+		@Override
+		public boolean isTrusted(X509Certificate[] chain, String authType) {
+			return chain.length == 1;
 		}
 
 	}

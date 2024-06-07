@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,6 +32,7 @@ import org.assertj.core.api.Condition;
 import org.gradle.testkit.runner.BuildResult;
 import org.gradle.testkit.runner.TaskOutcome;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledForJreRange;
 import org.junit.jupiter.api.condition.JRE;
@@ -73,6 +74,7 @@ class PaketoBuilderTests {
 		this.gradleBuild.scriptPropertyFrom(new File("../../gradle.properties"), "nativeBuildToolsVersion");
 		this.gradleBuild.expectDeprecationMessages("BPL_SPRING_CLOUD_BINDINGS_ENABLED.*true.*Deprecated");
 		this.gradleBuild.expectDeprecationMessages("BOM table is deprecated");
+		this.gradleBuild.expectDeprecationMessages("Command \"packages\" is deprecated, use `syft scan` instead");
 		this.gradleBuild.gradleVersion(GradleVersions.maximumCompatible());
 	}
 
@@ -149,6 +151,7 @@ class PaketoBuilderTests {
 	}
 
 	@Test
+	@Disabled("0.4.292 of the builder launches an unpacked jar rather than the script in bin")
 	void bootDistZipJarApp() throws Exception {
 		writeMainClass();
 		String projectName = this.gradleBuild.getProjectDir().getName();
@@ -299,7 +302,6 @@ class PaketoBuilderTests {
 	}
 
 	@Test
-	@EnabledForJreRange(max = JRE.JAVA_17)
 	void nativeApp() throws Exception {
 		this.gradleBuild.expectDeprecationMessages("uses or overrides a deprecated API");
 		this.gradleBuild.expectDeprecationMessages("has been deprecated and marked for removal");
