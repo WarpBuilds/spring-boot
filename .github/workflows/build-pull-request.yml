@@ -25,6 +25,8 @@ jobs:
         uses: gradle/actions/wrapper-validation@db19848a5fa7950289d3668fb053140cf3028d43 #v3.3.2
       - name: Set Up Gradle
         uses: WarpBuilds/gradle-build-action@v2
+        with:
+          cache-read-only: false
       - name: Build
         env:
           CI: 'true'
