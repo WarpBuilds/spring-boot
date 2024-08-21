@@ -85,7 +85,7 @@ class TestcontainersLifecycleBeanPostProcessor
 
 	@Override
 	public Object postProcessAfterInitialization(Object bean, String beanName) throws BeansException {
-		if (this.beanFactory.isConfigurationFrozen()) {
+		if (this.beanFactory.isConfigurationFrozen() && !isAotProcessingInProgress()) {
 			initializeContainers();
 		}
 		if (bean instanceof Startable startableBean) {
@@ -100,10 +100,13 @@ class TestcontainersLifecycleBeanPostProcessor
 		return bean;
 	}
 
+	private boolean isAotProcessingInProgress() {
+		return Boolean.getBoolean("spring.aot.processing");
+	}
+
 	private void initializeStartables(Startable startableBean, String startableBeanName) {
 		logger.trace(LogMessage.format("Initializing startables"));
-		List<String> beanNames = new ArrayList<>(
-				List.of(this.beanFactory.getBeanNamesForType(Startable.class, false, false)));
+		List<String> beanNames = new ArrayList<>(getBeanNames(Startable.class));
 		beanNames.remove(startableBeanName);
 		List<Object> beans = getBeans(beanNames);
 		if (beans == null) {
@@ -132,7 +135,7 @@ class TestcontainersLifecycleBeanPostProcessor
 	private void initializeContainers() {
 		if (this.containersInitialized.compareAndSet(false, true)) {
 			logger.trace("Initializing containers");
-			List<String> beanNames = List.of(this.beanFactory.getBeanNamesForType(ContainerState.class, false, false));
+			List<String> beanNames = getBeanNames(ContainerState.class);
 			List<Object> beans = getBeans(beanNames);
 			if (beans != null) {
 				logger.trace(LogMessage.format("Initialized containers %s", beanNames));
@@ -142,6 +145,10 @@ class TestcontainersLifecycleBeanPostProcessor
 				this.containersInitialized.set(false);
 			}
 		}
+	}
+
+	private List<String> getBeanNames(Class<?> type) {
+		return List.of(this.beanFactory.getBeanNamesForType(type, true, false));
 	}
 
 	private List<Object> getBeans(List<String> beanNames) {

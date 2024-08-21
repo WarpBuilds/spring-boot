@@ -5,10 +5,17 @@ inputs:
     required: false
     default: '17'
     description: 'The Java version to use for the build'
+  java-early-access:
+    required: false
+    default: 'false'
+    description: 'Whether the Java version is in early access'
   java-toolchain:
     required: false
-    default: false
+    default: 'false'
     description: 'Whether a Java toolchain should be used'
+  develocity-access-key:
+    required: false
+    description: 'The access key for authentication with ge.spring.io'
 runs:
   using: composite
   steps:
@@ -20,14 +27,15 @@ runs:
     - name: Set Up Java
       uses: actions/setup-java@v4
       with:
-        distribution: 'liberica'
+        distribution: ${{ inputs.java-early-access == 'true' && 'temurin' || 'liberica' }}
         java-version: |
-          ${{ inputs.java-version }}
+          ${{ inputs.java-early-access == 'true' && format('{0}-ea', inputs.java-version) || inputs.java-version }}
           ${{ inputs.java-toolchain == 'true' && '17' || '' }}
     - name: Set Up Gradle
-      uses: gradle/actions/setup-gradle@db19848a5fa7950289d3668fb053140cf3028d43 # v3.3.2
+      uses: gradle/actions/setup-gradle@af1da67850ed9a4cedd57bfd976089dd991e2582 # v4.0.0
       with:
         cache-read-only: false
+        develocity-access-key: ${{ inputs.develocity-access-key }}
     - name: Configure Gradle Properties
       shell: bash
       run: |

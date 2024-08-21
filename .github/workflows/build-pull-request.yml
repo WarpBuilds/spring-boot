@@ -17,20 +17,18 @@ jobs:
       - name: Set Up JDK 17
         uses: WarpBuilds/setup-java@v4
         with:
-          java-version: '17'
-          distribution: 'liberica'
+          java-version: "17"
+          distribution: "liberica"
       - name: Check Out
         uses: actions/checkout@v4
       - name: Validate Gradle Wrapper
-        uses: gradle/actions/wrapper-validation@db19848a5fa7950289d3668fb053140cf3028d43 #v3.3.2
+        uses: gradle/actions/wrapper-validation@af1da67850ed9a4cedd57bfd976089dd991e2582 # v4.0.0
       - name: Set Up Gradle
-        uses: WarpBuilds/gradle-build-action@v2
-        with:
-          cache-read-only: false
+        uses: gradle/actions/setup-gradle@af1da67850ed9a4cedd57bfd976089dd991e2582 # v4.0.0
       - name: Build
         env:
-          CI: 'true'
-          GRADLE_ENTERPRISE_URL: 'https://ge.spring.io'
+          CI: "true"
+          GRADLE_ENTERPRISE_URL: "https://ge.spring.io"
         run: ./gradlew -Dorg.gradle.internal.launcher.welcomeMessageEnabled=false --no-daemon --no-parallel --continue build
       - name: Print JVM Thread Dumps When Cancelled
         uses: ./.github/actions/print-jvm-thread-dumps
@@ -40,7 +38,7 @@ jobs:
         if: failure()
         with:
           name: build-reports
-          path: '**/build/reports/'
+          path: "**/build/reports/"
       - name: Create snapshot
         if: github.event_name == 'push'
         uses: WarpBuilds/snapshot-save@feat/snp-rnr-action
