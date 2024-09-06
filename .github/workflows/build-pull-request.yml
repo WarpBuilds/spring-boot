@@ -33,16 +33,15 @@ jobs:
       - name: Print JVM Thread Dumps When Cancelled
         uses: ./.github/actions/print-jvm-thread-dumps
         if: cancelled()
-      - name: Upload Build Reports
-        uses: actions/upload-artifact@v4
-        if: failure()
-        with:
-          name: build-reports
-          path: "**/build/reports/"
+      # - name: Upload Build Reports
+      #   uses: actions/upload-artifact@v4
+      #   if: failure()
+      #   with:
+      #     name: build-reports
+      #     path: "**/build/reports/"
       - name: Create snapshot
         if: github.event_name == 'push'
-        uses: WarpBuilds/snapshot-save@feat/snp-rnr-action
+        uses: WarpBuilds/snapshot-save@v1
         with:
-          warpbuild-base-url: "https://api.dev.warpbuild.dev/api/v1"
-          wait-timeout-minutes: 30
-          alias: "wb-spring-boot-snp-0"
+          wait-timeout-minutes: 60
+          alias: "wb-spring-boot-praj-0"
