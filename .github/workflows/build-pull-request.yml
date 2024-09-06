@@ -9,11 +9,11 @@ jobs:
     name: Build Pull Request
     runs-on: warp-ubuntu-latest-x64-32x;snapshot.key=wb-spring-boot-praj-0
     steps:
-      - name: Free Disk Space
-        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # v1.3.1
-        with:
-          large-packages: false
-          docker-images: false
+      # - name: Free Disk Space
+      #   uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # v1.3.1
+      #   with:
+      #     large-packages: false
+      #     docker-images: false
       - name: Set Up JDK 17
         uses: WarpBuilds/setup-java@v4
         with:
